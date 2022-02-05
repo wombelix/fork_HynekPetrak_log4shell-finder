@@ -487,9 +487,7 @@ def scan_archive(f, path):
                 status |= Status.CVE_2019_17571
             if hasVulnerableJMSSink:
                 status |= Status.CVE_2022_23302
-            if hasChainsaw and hasVulnerableJMSSink:
-                # not hasHardenedLoggingEventInputStream and
-                # not hasJDBCAppender):
+            if hasChainsaw:
                 status |= Status.CVE_2022_23307
             if hasJDBCAppender and not hasJDBCPatternParser:
                 status |= Status.CVE_2022_23305
@@ -715,8 +713,7 @@ def check_class(class_file):
                 (check_path_exists(parent, FILOBJINPSTREAM)
                  or check_path_exists(parent, HARDENEDOIS))):
             status |= Status.CVE_2019_17571
-        if (check_path_exists(parent, CHAINSAW) and
-                hasVulnerableJMSSink):
+        if (check_path_exists(parent, CHAINSAW)):
             status |= Status.CVE_2022_23307
         if (check_path_exists(parent, JDBCAPPENDER) and
                 not check_path_exists(parent, JDBCPATTPARSER)):
