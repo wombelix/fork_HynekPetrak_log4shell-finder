@@ -345,7 +345,6 @@ def scan_archive(f, path):
             elif not fnl.endswith(CLASS_EXTS):
                 continue
             elif fn.endswith(CLASS_VARIANTS[JDBC_DSCS]):
-                print("test")
                 with zf.open(fn, "r") as inner_class:
                     class_content = inner_class.read()
                     if class_content.find(IS_CVE_2021_44832_SAFE) >= 0:
