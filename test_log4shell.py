@@ -16,18 +16,8 @@ from enum import Flag, Enum, auto
 from shlex import shlex
 from collections import Counter
 from datetime import timedelta
-try:
-    import win32file
-    import win32api
 
-    drives = win32api.GetLogicalDriveStrings()
-    drives = drives.split('\000')[:-1]
-    drives = [d for d in drives if win32file.GetDriveType(
-        d) == win32file.DRIVE_FIXED]
-except:
-    drives = None
-
-VERSION = "1.22pre-20220123"
+VERSION = "1.22-20220222"
 
 DEFAULT_LOG_NAME = 'log4shell-finder.log'
 
@@ -48,6 +38,7 @@ JMSAPPENDER = "net/JMSAppender"
 JDBCAPPENDER = "jdbc/JDBCAppender"
 JDBCPATTPARSER = "jdbc/JdbcPatternParser"
 JNDILOOKUP = "core/lookup/JndiLookup"
+# MSGPATCONV = "core/pattern/MessagePatternConverter"
 CFGSTRSUBST = "core/lookup/ConfigurationStrSubstitutor"
 JNDIMANAGER = "core/net/JndiManager"
 JNDIUTIL = "net/JNDIUtil"
@@ -130,6 +121,12 @@ IN_2_8_2 = b"Additional classes to allow deserialization"
 
 # This disappears from JMSSink in fix of CVE-2022-23303
 IN_JMSSINK = b"Could not find name "
+
+# Patched in JndiLookup from 2.12.2
+IN_2_12_2_PATCHED = b"JNDI is not supported"
+
+# Patched in MessagePatternConverter of 2.16.0
+# IN_2_16_0_PATCHED = b"Message Lookups are no longer supported"
 
 
 class FileType(Enum):
@@ -356,6 +353,8 @@ def scan_archive(f, path):
                     class_content = inner_class.read()
                     if class_content.find(IN_2_17_0) >= 0:
                         isLog4j2_17 = True
+                    elif class_content.find(IN_2_12_2_PATCHED) >= 0:
+                        isLog4j2_12_2 = True
                     elif class_content.find(NOT_IN_2_12_2) >= 0:
                         isLog4j2_12_2_override = True
                     else:
@@ -803,7 +802,7 @@ def check_class(class_file):
         if fn:
             with open(fn, "rb") as f:
                 fcontent = f.read()
-                if fcontent.find(NOT_IN_2_12_2) == -1:
+                if fcontent.find(IN_2_12_2_PATCHED) > 0 or fcontent.find(NOT_IN_2_12_2) == -1:
                     status |= Status.CVE_2021_45105 | Status.CVE_2021_44832
                     log_item(parent, status,
                              msg + " == 2.12.2",
@@ -1107,8 +1106,7 @@ def output_csv(fn, host_info):
     found_items_columns = ["datetime", "ver", "ip", "fqdn",
                            "OS", "Release", "arch",
                            "container", "status", "path", "message",
-                           "pom_version", "product", "runtime",
-                           "folders", "files", ]
+                           "pom_version", "product", ]
     with open(fn, 'w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, quoting=csv.QUOTE_ALL,
                                 skipinitialspace=True, fieldnames=found_items_columns)
@@ -1185,7 +1183,8 @@ def main():
     parser.add_argument('folders', nargs='+',
                         help='List of folders or files to scan.\n'
                         'Use "-" to read list of files from stdin.\n'
-                        'On MS Windows use "all" to scan all local drives.')
+                        'On MS Windows use "all" to scan all local drives.\n'
+                        '\t "all" requires pywin32 installed')
 
     args = parser.parse_args()
 
@@ -1239,7 +1238,6 @@ def main():
             progress = 10
 
     blacklist = [p for p in args.exclude_dirs if os.path.exists(p)]
-    scanned_paths = []
 
     for f in args.folders:
         if any(os.path.exists(f) and os.path.samefile(f, p) for p in blacklist):
@@ -1248,25 +1246,30 @@ def main():
         if f == "-":
             for line in sys.stdin:
                 analyze_directory(line.rstrip("\r\n"), blacklist)
-        elif f == "all" and drives:
-            log.info("[I] Going to scan all detected local drives: " +
-                     ", ".join(drives))
-            for drive in drives:
-                st = time.time()
-                sfo = analyze_directory.dirs_checked
-                sfi = process_file.files_checked
-                analyze_directory(drive, blacklist)
-                scanned_paths.append((drive, timedelta(seconds=time.time()-st),
-                                      process_file.files_checked - sfi,
-                                      analyze_directory.dirs_checked - sfo,))
+        elif f == "all":
+            if os.name != 'nt':
+                log.info("[E] 'all' is available only on MS Windows")
+            else:
+                try:
+                    import win32file
+                    import win32api
+
+                    drives = win32api.GetLogicalDriveStrings()
+                    drives = drives.split('\000')[:-1]
+                    drives = [d for d in drives if win32file.GetDriveType(
+                        d) == win32file.DRIVE_FIXED]
+                    if drives:
+                        log.info("[I] Going to scan all detected local drives: " +
+                                 ", ".join(drives))
+                        for drive in drives:
+                            analyze_directory(drive, blacklist)
+                    else:
+                        log.info("[I] No local drives detected")
+                except Exception as ex:
+                    drives = None
+                    log.info(f"[E] pywin32 exception: {ex}")
         else:
-            st = time.time()
-            sfo = analyze_directory.dirs_checked
-            sfi = process_file.files_checked
             analyze_directory(f, blacklist)
-            scanned_paths.append((f, timedelta(seconds=time.time()-st),
-                                  process_file.files_checked - sfi,
-                                  analyze_directory.dirs_checked - sfo,))
 
     log.info("")
     hits = print_stats()
@@ -1278,33 +1281,22 @@ def main():
             fn = f"{hostname}_{ip}.json"
         output_json(fn, host_info)
 
+    epilog_status = []
     if not log_item.found_items and args.csv_clean:
-        for path in scanned_paths:
-            log_item.found_items.append({
-                "container": "",
-                "path": path[0],
-                "status": ["CLEAN"],
-                "message": "No log4j instances found",
-                "pom_version": "",
-                "product": "",
-                "runtime": path[1],
-                "folders": path[3],
-                "files": path[2],
-            })
+        epilog_status.append("CLEAN")
 
     if args.csv_stats:
-        for path in scanned_paths:
-            log_item.found_items.append({
-                "container": "",
-                "path": path[0],
-                "status": ["STATS"],
-                "message": "Statistics of " + host_info['cmdline'],
-                "pom_version": "",
-                "product": "",
-                "runtime": path[1],
-                "folders": path[3],
-                "files": path[2],
-            })
+        epilog_status.append("STATS")
+
+    if epilog_status:
+        log_item.found_items.append({
+            "container": "",
+            "path": host_info['cmdline'],
+            "status": epilog_status,
+            "message": time.time()-report_progress.start_time,  # runtime
+            "pom_version": analyze_directory.dirs_checked,  # folders
+            "product": process_file.files_checked,  # files
+        })
 
     if "csv_out" in args:
         if args.csv_out:

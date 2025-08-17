@@ -12,7 +12,7 @@ Identifies log4j (1.x), reload4j (1.2.18+) and log4j-core (2.x) versions on your
 [CVE-2021-44228](https://mergebase.com/vulnerability/CVE-2021-44228/), 
 [CVE-2021-45046](https://mergebase.com/vulnerability/CVE-2021-45046/) and many others - see [table below](#detected-vulnerabilities). 
 It is able to find instances embedded in larger applications 
-several layers deep. Works on Linux, Windows, Mac or anywhere else Python 3.6+ runs.
+several layers deep. Works on Linux, Windows, Mac or anywhere else Python 3.8+ runs.
 
 Can correctly detect log4j inside executable spring-boot jars/wars, dependencies blended
 into [uber jars](https://mergebase.com/blog/software-composition-analysis-sca-vs-java-uber-jars/), shaded jars, and even
@@ -31,12 +31,12 @@ Java archive extensions searched: `.zip`, `.jar`, `.war`, `.ear`, `.aar`, `.jpi`
 | YES     | CVE-2017-5645  | 9.8    | Critical | 7     | 2.0-alpha1 | 2.8.1                          | 2.8.2               | log4jv2 |
 | YES     | CVE-2019-17571 | 9.8    | Critical |       | 1.2.0      | 1.2.17                         | nofix               | log4jv1 |
 | YES     | CVE-2021-45046 | 9.0    | Critical | 7/8   | 2.0-beta9  | 2.15.0 excluding 2.12.2        | 2.12.2/2.16.0       | log4jv2 |
-| YES     | CVE-2022-23305 | 8.1    | High     |       | 1.2.0      | 1.2.17                         | nofix / 1.2.18.1    | log4jv1, reload4j |
-| YES     | CVE-2022-23307 | 8.1    | High     |       | 1.2.0      | 1.2.17                         | nofix / 1.2.18.1    | log4jv1, reload4j |
+| YES     | CVE-2022-23305 | 9.8    | Critical |       | 1.2.0      | 1.2.17                         | nofix / 1.2.18.1    | log4jv1, reload4j |
+| YES     | CVE-2022-23307 | 9.8    | Critical |       | 1.2.0      | 1.2.17                         | nofix / 1.2.18.1    | log4jv1, reload4j |
+| YES     | CVE-2022-23302 | 8.8    | High     |       | 1.0        | 1.2.17                         | nofix / 1.2.18.1    | log4jv1, reload4j |
 | YES     | CVE-2021-4104  | 7.5    | High     | -     | 1.0        | 1.2.17                         | nofix               | log4jv1 |
 | YES     | CVE-2021-44832 | 6.6    | Medium   | 6/7/8 | 2.0-alpha7 | 2.17.0, excluding 2.3.2/2.12.4 | 2.3.2/2.12.4/2.17.1 | log4jv2 |
 | -       | CVE-2021-42550 | 6.6    | Medium   | -     | 1.0        | 1.2.7                          | 1.2.8               | logback |
-| YES     | CVE-2022-23302 | 6.6    | Medium   |       | 1.0        | 1.2.17                         | nofix / 1.2.18.1    | log4jv1, reload4j |
 | YES     | CVE-2021-45105 | 5.9    | Medium   | 6/7/8 | 2.0-beta9  | 2.16.0, excluding 2.12.3       | 2.3.1/2.12.3/2.17.0 | log4jv2 |
 | -       | CVE-2020-9488  | 3.7    | Low      | 7/8   | 2.0-alpha1 | 2.13.1                         | 2.12.3/2.13.2       | log4jv2 |
 
@@ -54,7 +54,7 @@ instant fast.
 
 > Binaries are available for Linux 64bit, MS Windows 64bit and 32bit - see Releases
 > 
-> Minimum supported Python version is 3.6 
+> Minimum supported Python version is 3.8. According to my testing Python 3.6 zip implementation cannot open many `.jar` files from my test data. 
 
 ## Performance
 
@@ -67,12 +67,23 @@ log4shell finder is optimized for performance and low memory footprint.
 ### log4shell-finder (this tool)
 ```yaml
 Command being timed: "./test_log4shell.py /home/hynek/war/ --exclude-dirs /mnt --same-fs"
-User time (seconds): 11.05
-System time (seconds): 1.91
+User time (seconds): 17.68
+System time (seconds): 1.20
 Percent of CPU this job got: 127%
-Elapsed (wall clock) time (h:mm:ss or m:ss): 0:10.47
-Maximum resident set size (kbytes): 81616
-File system inputs: 968
+Elapsed (wall clock) time (h:mm:ss or m:ss): 0:14.47
+Maximum resident set size (kbytes): 64144
+File system inputs: 114424
+```
+
+### log4j-finder (https://github.com/fox-it/log4j-finder)
+```yaml
+Command being timed: "./log4j-finder.py /home/hynek/war/"
+User time (seconds): 23.59
+System time (seconds): 1.09
+Percent of CPU this job got: 99%
+Elapsed (wall clock) time (h:mm:ss or m:ss): 0:26.18
+Maximum resident set size (kbytes): 38604
+File system inputs: 142824
 ```
 
 ### log4j-detector (https://github.com/mergebase/log4j-detector)
@@ -98,6 +109,17 @@ File system inputs: 215416
 ```
 
 ## Changelog
+
+### Version 1.22-20220222
+
+- Added: Reading library version and name (log4j, log4j-core, reload4j) from MANIFEST.MF as well as from pom.properties
+- Performance improvements by additional 15%
+- Added: Autodetecting all local drives in mswin with `all` parameter
+- Added: `--no-csv-header` to omit csv header to allow easier merging of results from multiple hosts
+- Added: Detecting CVE-2017-5645 (9.8), CVE-2019-17571 (9.8), CVE-2022-23307 (8.1), CVE-2022-23305 (9.8), CVE-2022-23305 (9.8), CVE-2022-23302 (8.1), improved detection of CVE-2017-5645
+- Added: `--threads` parameter to manually tune number of scanning threads
+- Added: `--cvs-clean` parameter in order to write "CLEAN" line to csv output in case no log4j library detected
+- Added: `--cvs-stats` parameter in order to write "STATS" line to csv output with runtime in seconds and number of files and folders scanned
 
 ### Version 1.21-20220109
 
@@ -132,6 +154,8 @@ optional arguments:
                         Save results to json file.
   -c [FILE], --csv-out [FILE]
                         Save results to csv file.
+  --csv-clean           Add CLEAN status line in case no entries found
+  --csv-stats           Add STATS line into csv output.
   --no-csv-header       Don't write CSV header to the output file.
   -f, --fix             Fix vulnerable by renaming JndiLookup.class into JndiLookup.vulne.
   --threads [THREADS]   Specify number of threads to use for parallel processing, default is 6.
@@ -176,6 +200,9 @@ python3 .\test_log4shell.py c:\ d:\ --same-fs --no-errors
 ```
 
 On MS Windows:
+
+Make sure you've installed `pywin32`, e.g. via `pip install pywin32`
+
 ```bash
 PS C:\D\log4shell_finder> python3 .\test_log4shell.py c:\ --same-fs --no-errors
 
